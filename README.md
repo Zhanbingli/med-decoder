@@ -177,7 +177,7 @@ Edit `esp32_firmware/wifi_config.h`:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/cardivoice.git
+git clone https://github.com/Zhanbingli/cardivoice.git
 cd cardivoice
 
 # Create conda environment
@@ -447,10 +447,10 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Contact
 
-- **Project Lead**: [Your Name]
-- **Email**: your.email@example.com
-- **Kaggle**: [Your Kaggle Profile]
-- **GitHub**: [Your GitHub Profile]
+- **Project Lead**: zhanbingli
+- **Email**: zhanbing2025@gmail
+- **Kaggle**: zhanbing
+- **GitHub**: Zhanbingli
 
 ---
 
