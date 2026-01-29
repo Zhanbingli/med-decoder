@@ -1,0 +1,80 @@
+name: cardivoice
+channels:
+  - apple
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.11
+  - pip
+  - numpy
+  - pandas
+  - postgresql
+  - openssl
+  - certifi
+  - ca-certificates
+
+  # Core ML dependencies (Apple Silicon optimized)
+  - pytorch>=2.0.0
+  - torchvision
+  - torchaudio
+  - accelerate
+
+  # Web framework dependencies
+  - uvicorn
+  - fastapi
+  - websockets
+  - pydantic
+
+  # UI dependencies
+  - streamlit
+
+  # Audio processing
+  - libsndfile
+  - portaudio
+
+  # Database
+  - psycopg2
+
+  # Development tools
+  - jupyter
+  - black
+  - flake8
+  - mypy
+
+  # Audio processing (pip)
+  - pip:
+    # PyTorch with MPS support (Apple Silicon)
+    # Using pip for latest PyTorch version
+    # torch, torchvision, torchaudio already from conda
+    
+    # Transformers
+    - transformers>=4.50.0
+    
+    # Audio processing
+    - librosa>=0.10.0
+    - soundfile>=0.12.0
+    - scipy>=1.10.0
+    
+    # Database
+    - psycopg2-binary>=2.9.0
+    
+    # HTTP client
+    - httpx>=0.24.0
+    
+    # Utilities
+    - python-dotenv>=1.0.0
+    - tqdm>=4.65.0
+    
+    # Jupyter
+    - ipython>=8.0.0
+    - ipykernel>=6.0.0
+    
+    # Code quality
+    - ruff>=0.1.0
+    - pre-commit>=3.0.0
+
+variables:
+  # Optimize for Apple Silicon
+  _PYZUDF_MAX_UDF_WORKERS: 8
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8

@@ -1,0 +1,71 @@
+# CardioVoice - Core Dependencies
+# For Med-Gemma Impact Challenge
+
+# Core ML Libraries
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+transformers>=4.50.0
+accelerate>=0.20.0
+datasets>=2.14.0
+tokenizers>=0.15.0
+
+# Apple Silicon Optimization
+# Note: On Apple Silicon Macs, PyTorch 2.0+ automatically uses MPS backend
+
+# Web Framework
+fastapi>=0.100.0
+uvicorn>=0.23.0
+websockets>=11.0.0
+pydantic>=2.0.0
+httpx>=0.24.0
+
+# Streamlit UI
+streamlit>=1.28.0
+streamlit-webrtc>=0.47.0
+
+# Audio Processing
+librosa>=0.10.0
+soundfile>=0.12.0
+scipy>=1.10.0
+numpy>=1.24.0
+
+# Database
+psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0
+
+# Data Handling
+pandas>=2.0.0
+pyarrow>=12.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.65.0
+click>=8.0.0
+rich>=13.0.0
+
+# Development
+jupyter>=1.0.0
+ipython>=8.0.0
+ipykernel>=6.0.0
+black>=23.0.0
+ruff>=0.1.0
+
+# Testing (optional)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# Type checking (optional)
+mypy>=1.0.0
+types-requests>=2.28.0
+types-Pillow>=10.0.0
+
+# Note: For Apple Silicon Macs, install using:
+# pip install --no-deps -r requirements.txt
+# conda install pytorch::pytorch torchvision torchaudio
+# pip install transformers accelerate
+
+# ESP32 MicroPython Tools (for audio recorder project)
+mpfshell>=0.8.0  # For uploading files to MicroPython ESP32
+pyserial>=3.5.0  # Serial communication support
