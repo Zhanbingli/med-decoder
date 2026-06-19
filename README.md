@@ -122,6 +122,18 @@ python realtime_pipeline.py --mic          # live streaming transcript (Ctrl+C t
 python realtime_pipeline.py --file a.wav   # replay a file through the pipeline
 ```
 
+### Measuring accuracy (WER)
+
+```bash
+python eval_wer.py --demo                   # self-test (synthesizes audio via `say`)
+python eval_wer.py --dir data/eval/         # your x.wav + x.txt reference pairs
+python eval_wer.py --manifest eval.jsonl    # {"audio":..., "reference":...} per line
+```
+
+Reports per-clip and aggregate WER, a substitution/deletion/insertion
+breakdown, the most common confusions, and mean ASR confidence — so accuracy
+is tracked with numbers, not guessed.
+
 ---
 
 ## Repository structure
@@ -133,6 +145,7 @@ med-decoder/
 ├── audio_capture.py                # MicSource + FileSource (16 kHz mono)
 ├── vad_segmenter.py                # energy-based utterance segmentation
 ├── demo.py / demo_unified.py       # no-hardware demos
+├── eval_wer.py                     # WER measurement harness
 ├── backend/
 │   ├── unified_model_manager.py    # MedASR + Ollama LLM wrappers
 │   └── store.py                    # local SQLite persistence
@@ -147,7 +160,8 @@ med-decoder/
 ## Roadmap
 
 - [ ] **Structured output via JSON schema** instead of regex section parsing
-- [ ] **Confidence / uncertainty markers** so the doctor knows what to double-check
+- [x] **Confidence / uncertainty markers** so the doctor knows what to double-check
+- [x] **WER measurement harness** (`eval_wer.py`) to track accuracy
 - [ ] **Export / print** the note (PDF, plain text)
 - [ ] **Speaker separation** (dual-lavalier or diarization) for doctor vs patient
 - [ ] Swap in the real **MedGemma** GGUF when available
