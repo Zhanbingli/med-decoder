@@ -180,7 +180,9 @@ class MedASRWrapper(BaseModelWrapper):
         self.pipe = None
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.dtype = torch.float32
-        
+        # 转写前音频预处理（高通去嗡 + 峰值归一化）。可用环境变量关闭做 A/B
+        self.preprocess_audio = os.environ.get("CARDIOVOICE_ASR_PREPROCESS", "1") != "0"
+
         logger.info(f"MedASR will use device: {self.device}")
     
     def load(self) -> bool:
@@ -343,6 +345,10 @@ class MedASRWrapper(BaseModelWrapper):
                 audio_float = audio_data.astype(np.float32)
             else:
                 audio_float = audio_data.astype(np.float32) / 32768.0
+
+            if self.preprocess_audio:
+                from preprocess import preprocess
+                audio_float = preprocess(audio_float, sr=sample_rate)
 
             text, words = self._decode_with_confidence(audio_float)
 

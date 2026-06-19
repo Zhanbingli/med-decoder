@@ -147,21 +147,14 @@ def load_demo() -> List[Dict]:
 
 
 # ----------------------------------------------------------------------- main
-def run(items: List[Dict], show_subs: int = 12):
-    from unified_model_manager import UnifiedModelManager
-
-    print("Loading MedASR…")
-    mgr = UnifiedModelManager()
-    if not mgr.medasr.load():
-        print("MedASR failed to load")
-        sys.exit(1)
-
+def evaluate(mgr, items: List[Dict], verbose: bool = True, show_subs: int = 12) -> float:
     tot = {"S": 0, "D": 0, "I": 0, "N": 0}
     all_subs: Counter = Counter()
     conf_sum, conf_n = 0.0, 0
 
-    print(f"\n{'file':<28}{'WER':>8}{'conf':>8}{'S':>5}{'D':>5}{'I':>5}{'N':>6}")
-    print("-" * 68)
+    if verbose:
+        print(f"\n{'file':<28}{'WER':>8}{'conf':>8}{'S':>5}{'D':>5}{'I':>5}{'N':>6}")
+        print("-" * 68)
     for it in items:
         result = mgr.medasr.transcribe_file(it["audio"])
         sc = score(it["reference"], result.text)
@@ -170,25 +163,55 @@ def run(items: List[Dict], show_subs: int = 12):
         all_subs.update(sc["subs"])
         conf_sum += result.confidence
         conf_n += 1
-        name = Path(it["audio"]).name[:26]
-        print(
-            f"{name:<28}{sc['wer']*100:>7.1f}%{result.confidence*100:>7.0f}%"
-            f"{sc['S']:>5}{sc['D']:>5}{sc['I']:>5}{sc['N']:>6}"
-        )
+        if verbose:
+            name = Path(it["audio"]).name[:26]
+            print(
+                f"{name:<28}{sc['wer']*100:>7.1f}%{result.confidence*100:>7.0f}%"
+                f"{sc['S']:>5}{sc['D']:>5}{sc['I']:>5}{sc['N']:>6}"
+            )
 
     n = max(tot["N"], 1)
     agg = (tot["S"] + tot["D"] + tot["I"]) / n
-    print("-" * 68)
-    print(
-        f"{'AGGREGATE':<28}{agg*100:>7.1f}%{(conf_sum/max(conf_n,1))*100:>7.0f}%"
-        f"{tot['S']:>5}{tot['D']:>5}{tot['I']:>5}{n:>6}"
-    )
-    print(f"\nWER = {agg*100:.2f}%  over {n} reference words, {conf_n} clips")
+    if verbose:
+        print("-" * 68)
+        print(
+            f"{'AGGREGATE':<28}{agg*100:>7.1f}%{(conf_sum/max(conf_n,1))*100:>7.0f}%"
+            f"{tot['S']:>5}{tot['D']:>5}{tot['I']:>5}{n:>6}"
+        )
+        print(f"\nWER = {agg*100:.2f}%  over {n} reference words, {conf_n} clips")
+        if all_subs:
+            print("\nTop substitutions (reference → hypothesis):")
+            for (r, h), c in all_subs.most_common(show_subs):
+                print(f"  {c:>3}×  {r}  →  {h}")
+    return agg
 
-    if all_subs:
-        print("\nTop substitutions (reference → hypothesis):")
-        for (r, h), c in all_subs.most_common(show_subs):
-            print(f"  {c:>3}×  {r}  →  {h}")
+
+def run(items: List[Dict], compare: bool = False):
+    from unified_model_manager import UnifiedModelManager
+
+    print("Loading MedASR…")
+    mgr = UnifiedModelManager()
+    if not mgr.medasr.load():
+        print("MedASR failed to load")
+        sys.exit(1)
+
+    if not compare:
+        evaluate(mgr, items)
+        return
+
+    print("\n=== preprocessing OFF ===")
+    mgr.medasr.preprocess_audio = False
+    wer_off = evaluate(mgr, items, verbose=True, show_subs=0)
+    print("\n=== preprocessing ON ===")
+    mgr.medasr.preprocess_audio = True
+    wer_on = evaluate(mgr, items, verbose=True, show_subs=0)
+
+    delta = (wer_off - wer_on) * 100
+    print("\n" + "=" * 40)
+    print(f"  WER  off={wer_off*100:.2f}%   on={wer_on*100:.2f}%")
+    verdict = "improves" if delta > 0 else ("hurts" if delta < 0 else "no change")
+    print(f"  preprocessing {verdict} WER by {abs(delta):.2f} pts")
+    print("=" * 40)
 
 
 def main():
@@ -200,6 +223,10 @@ def main():
     g.add_argument("--manifest", help="JSONL with {audio, reference} per line")
     g.add_argument("--dir", help="folder of x.wav + x.txt reference pairs")
     g.add_argument("--demo", action="store_true", help="synthesize demo audio via macOS say")
+    ap.add_argument(
+        "--compare", action="store_true",
+        help="run with audio preprocessing OFF then ON and report the WER delta",
+    )
     args = ap.parse_args()
 
     if args.demo:
@@ -212,7 +239,7 @@ def main():
     if not items:
         print("No (audio, reference) pairs found.")
         sys.exit(1)
-    run(items)
+    run(items, compare=args.compare)
 
 
 if __name__ == "__main__":

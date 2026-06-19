@@ -128,6 +128,7 @@ python realtime_pipeline.py --file a.wav   # replay a file through the pipeline
 python eval_wer.py --demo                   # self-test (synthesizes audio via `say`)
 python eval_wer.py --dir data/eval/         # your x.wav + x.txt reference pairs
 python eval_wer.py --manifest eval.jsonl    # {"audio":..., "reference":...} per line
+python eval_wer.py --dir data/eval/ --compare   # WER with audio preprocessing off vs on
 ```
 
 Reports per-clip and aggregate WER, a substitution/deletion/insertion
@@ -143,6 +144,7 @@ med-decoder/
 ├── app.py                          # Streamlit UI (the product surface)
 ├── realtime_pipeline.py            # CLI: mic/file → VAD → MedASR → LLM
 ├── audio_capture.py                # MicSource + FileSource (16 kHz mono)
+├── preprocess.py                   # high-pass + peak-normalize before ASR
 ├── vad_segmenter.py                # energy-based utterance segmentation
 ├── demo.py / demo_unified.py       # no-hardware demos
 ├── eval_wer.py                     # WER measurement harness
