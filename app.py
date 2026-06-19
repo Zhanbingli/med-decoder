@@ -243,7 +243,17 @@ def audio_panel(manager):
                 "transcript", value=transcript, height=140,
                 label_visibility="collapsed",
             )
-            if not transcript.strip():
+            if transcript.strip():
+                if st.button("🩺 术语纠错（LLM 保守修正医学术语/药名）",
+                             disabled=not manager.medgemma.is_available()):
+                    with st.spinner("纠错中…"):
+                        corrected = manager.medgemma.correct_transcription(
+                            st.session_state["transcript"]
+                        )
+                    st.session_state["transcript"] = corrected
+                    st.session_state["word_conf"] = []  # 纠错后逐词置信度不再对应
+                    st.rerun()
+            else:
                 st.warning("没有识别到语音内容。请确认麦克风权限，并贴近说话。")
 
 

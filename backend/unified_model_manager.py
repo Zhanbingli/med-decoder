@@ -538,12 +538,75 @@ class MedGemmaWrapper(BaseModelWrapper):
 
             self.info.inference_count += 1
             return response['message']['content']
-            
+
         except Exception as e:
             logger.error(f"MedGemma generation failed: {e}")
             raise
-    
-    def generate_cardiology_record(self, 
+
+    def correct_transcription(self, text: str,
+                              terms: Optional[List[str]] = None) -> str:
+        """
+        用 LLM 保守地修正 ASR 转写中的明显错误（尤其医学术语/药名）。
+
+        设计为"只改明显错、不改语义、不增删信息"。若返回结果异常（为空或长度
+        相比原文剧烈缩短，疑似被概括/拒答），则回退为原文，保证绝不让结果更差。
+
+        Args:
+            text: 原始转写
+            terms: 参考术语表（首选拼写）。为 None 时加载默认心内科词表。
+        Returns:
+            修正后的转写（失败时返回原文）
+        """
+        if not text or not text.strip():
+            return text
+        if not self.is_available():
+            return text
+
+        if terms is None:
+            terms = load_lexicon()
+        lexicon_str = ", ".join(terms) if terms else ""
+
+        prompt = f"""You are a careful medical transcription editor. The text \
+below is an automatic speech recognition (ASR) transcript of a cardiology \
+consultation. It may contain misrecognized words, especially medical terms and \
+drug names.
+
+Fix ONLY clear ASR errors:
+- Correct misheard/misspelled medical terms and drug names toward the reference \
+list when clearly intended.
+- Fix obvious word-level misrecognitions.
+
+Do NOT:
+- paraphrase, summarize, reorder, or change sentence structure
+- add or remove any clinical information
+- change numbers, doses, or units (unless an obvious ASR typo)
+- expand or invent abbreviations
+If a word is ambiguous, leave it unchanged.
+
+Output ONLY the corrected transcript text — no preamble, no explanation.
+
+Reference terms (preferred spellings): {lexicon_str}
+
+Transcript:
+{text}
+
+Corrected transcript:"""
+
+        try:
+            corrected = self.generate(
+                prompt, options={'temperature': 0.1}
+            ).strip()
+        except Exception as e:
+            logger.error(f"Transcription correction failed: {e}")
+            return text
+
+        # 安全护栏：空、或长度相比原文缩水超过 40%（疑似被概括），一律回退原文
+        if not corrected or len(corrected) < 0.6 * len(text):
+            logger.warning("Correction output looked unsafe; keeping original")
+            return text
+        return corrected
+
+    def generate_cardiology_record(self,
                                    transcription: str,
                                    patient_info: PatientInfo,
                                    template: str = "cardiology") -> OutpatientRecord:
@@ -917,6 +980,30 @@ class UnifiedModelManager:
                 callback(*args, **kwargs)
             except Exception as e:
                 logger.error(f"Callback error in {event}: {e}")
+
+
+_LEXICON_CACHE: Optional[List[str]] = None
+
+
+def load_lexicon(path: Optional[str] = None) -> List[str]:
+    """加载术语表（默认 lexicons/cardiology.txt）。忽略空行与 # 注释。"""
+    global _LEXICON_CACHE
+    if path is None and _LEXICON_CACHE is not None:
+        return _LEXICON_CACHE
+    if path is None:
+        path = str(Path(__file__).resolve().parent.parent / "lexicons" / "cardiology.txt")
+    terms: List[str] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    terms.append(line)
+    except FileNotFoundError:
+        logger.warning(f"Lexicon not found: {path}")
+    if _LEXICON_CACHE is None:
+        _LEXICON_CACHE = terms
+    return terms
 
 
 def create_patient_info(name: str, age: int, gender: str,

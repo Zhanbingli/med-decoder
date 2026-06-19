@@ -129,6 +129,7 @@ python eval_wer.py --demo                   # self-test (synthesizes audio via `
 python eval_wer.py --dir data/eval/         # your x.wav + x.txt reference pairs
 python eval_wer.py --manifest eval.jsonl    # {"audio":..., "reference":...} per line
 python eval_wer.py --dir data/eval/ --compare   # WER with audio preprocessing off vs on
+python eval_wer.py --dir data/eval/ --correct   # WER with LLM term correction off vs on
 ```
 
 Reports per-clip and aggregate WER, a substitution/deletion/insertion
@@ -146,6 +147,7 @@ med-decoder/
 ├── audio_capture.py                # MicSource + FileSource (16 kHz mono)
 ├── preprocess.py                   # high-pass + peak-normalize before ASR
 ├── vad_segmenter.py                # energy-based utterance segmentation
+├── lexicons/cardiology.txt         # terms/drugs for LLM transcript correction
 ├── demo.py / demo_unified.py       # no-hardware demos
 ├── eval_wer.py                     # WER measurement harness
 ├── backend/
@@ -164,6 +166,7 @@ med-decoder/
 - [ ] **Structured output via JSON schema** instead of regex section parsing
 - [x] **Confidence / uncertainty markers** so the doctor knows what to double-check
 - [x] **WER measurement harness** (`eval_wer.py`) to track accuracy
+- [x] **LLM post-ASR correction** of medical terms/drugs (conservative, lexicon-guided)
 - [ ] **Export / print** the note (PDF, plain text)
 - [ ] **Speaker separation** (dual-lavalier or diarization) for doctor vs patient
 - [ ] Swap in the real **MedGemma** GGUF when available

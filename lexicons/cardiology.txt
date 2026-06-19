@@ -1,0 +1,117 @@
+# Cardiology lexicon — preferred spellings of common terms and drugs.
+# Used by the post-ASR correction step to nudge misrecognitions toward
+# the intended medical term. One term per line; lines starting with # are
+# comments. Extend this with your own hospital/local terminology.
+
+# --- conditions / findings ---
+myocardial infarction
+acute coronary syndrome
+unstable angina
+stable angina
+angina pectoris
+STEMI
+NSTEMI
+atrial fibrillation
+atrial flutter
+ventricular tachycardia
+ventricular fibrillation
+supraventricular tachycardia
+bradycardia
+tachycardia
+palpitations
+dyspnea
+orthopnea
+paroxysmal nocturnal dyspnea
+syncope
+presyncope
+peripheral edema
+pitting edema
+heart murmur
+systolic murmur
+diastolic murmur
+aortic stenosis
+aortic regurgitation
+mitral stenosis
+mitral regurgitation
+tricuspid regurgitation
+pulmonary embolism
+pulmonary hypertension
+hypertension
+hypotension
+hyperlipidemia
+dyslipidemia
+coronary artery disease
+congestive heart failure
+heart failure with reduced ejection fraction
+heart failure with preserved ejection fraction
+cardiomyopathy
+dilated cardiomyopathy
+hypertrophic cardiomyopathy
+pericarditis
+pericardial effusion
+endocarditis
+myocarditis
+ischemia
+infarction
+claudication
+cyanosis
+diaphoresis
+edema
+arrhythmia
+ejection fraction
+
+# --- exams / tests ---
+electrocardiogram
+echocardiogram
+transthoracic echocardiogram
+transesophageal echocardiogram
+auscultation
+troponin
+B-type natriuretic peptide
+coronary angiography
+cardiac catheterization
+stress test
+Holter monitor
+ST elevation
+ST depression
+T-wave inversion
+
+# --- medications ---
+aspirin
+clopidogrel
+ticagrelor
+prasugrel
+atorvastatin
+rosuvastatin
+simvastatin
+metoprolol
+bisoprolol
+carvedilol
+atenolol
+lisinopril
+enalapril
+ramipril
+losartan
+valsartan
+candesartan
+amlodipine
+nifedipine
+diltiazem
+verapamil
+furosemide
+spironolactone
+hydrochlorothiazide
+warfarin
+apixaban
+rivaroxaban
+dabigatran
+heparin
+enoxaparin
+nitroglycerin
+isosorbide dinitrate
+isosorbide mononitrate
+digoxin
+amiodarone
+sacubitril valsartan
+empagliflozin
+dapagliflozin

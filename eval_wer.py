@@ -147,7 +147,8 @@ def load_demo() -> List[Dict]:
 
 
 # ----------------------------------------------------------------------- main
-def evaluate(mgr, items: List[Dict], verbose: bool = True, show_subs: int = 12) -> float:
+def evaluate(mgr, items: List[Dict], verbose: bool = True, show_subs: int = 12,
+             correct: bool = False) -> float:
     tot = {"S": 0, "D": 0, "I": 0, "N": 0}
     all_subs: Counter = Counter()
     conf_sum, conf_n = 0.0, 0
@@ -157,7 +158,10 @@ def evaluate(mgr, items: List[Dict], verbose: bool = True, show_subs: int = 12) 
         print("-" * 68)
     for it in items:
         result = mgr.medasr.transcribe_file(it["audio"])
-        sc = score(it["reference"], result.text)
+        hyp = result.text
+        if correct:
+            hyp = mgr.medgemma.correct_transcription(hyp)
+        sc = score(it["reference"], hyp)
         for k in ("S", "D", "I", "N"):
             tot[k] += sc[k]
         all_subs.update(sc["subs"])
@@ -186,7 +190,7 @@ def evaluate(mgr, items: List[Dict], verbose: bool = True, show_subs: int = 12) 
     return agg
 
 
-def run(items: List[Dict], compare: bool = False):
+def run(items: List[Dict], compare: bool = False, correct: bool = False):
     from unified_model_manager import UnifiedModelManager
 
     print("Loading MedASR…")
@@ -194,6 +198,22 @@ def run(items: List[Dict], compare: bool = False):
     if not mgr.medasr.load():
         print("MedASR failed to load")
         sys.exit(1)
+
+    if correct:
+        if not mgr.medgemma.load():
+            print("LLM failed to load (is `ollama serve` running?)")
+            sys.exit(1)
+        print("\n=== LLM correction OFF ===")
+        wer_off = evaluate(mgr, items, verbose=True, show_subs=0, correct=False)
+        print("\n=== LLM correction ON ===")
+        wer_on = evaluate(mgr, items, verbose=True, show_subs=0, correct=True)
+        delta = (wer_off - wer_on) * 100
+        verdict = "improves" if delta > 0 else ("hurts" if delta < 0 else "no change")
+        print("\n" + "=" * 40)
+        print(f"  WER  raw={wer_off*100:.2f}%   corrected={wer_on*100:.2f}%")
+        print(f"  LLM correction {verdict} WER by {abs(delta):.2f} pts")
+        print("=" * 40)
+        return
 
     if not compare:
         evaluate(mgr, items)
@@ -227,6 +247,10 @@ def main():
         "--compare", action="store_true",
         help="run with audio preprocessing OFF then ON and report the WER delta",
     )
+    ap.add_argument(
+        "--correct", action="store_true",
+        help="run with LLM post-ASR correction OFF then ON and report the WER delta",
+    )
     args = ap.parse_args()
 
     if args.demo:
@@ -239,7 +263,7 @@ def main():
     if not items:
         print("No (audio, reference) pairs found.")
         sys.exit(1)
-    run(items, compare=args.compare)
+    run(items, compare=args.compare, correct=args.correct)
 
 
 if __name__ == "__main__":
