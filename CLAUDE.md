@@ -22,7 +22,8 @@ AudioSource(frame) -> VADSegmenter -> seg_q -> ASR worker -> transcript
    - **MedASR**: HuggingFace Transformers pipeline (`google/medasr`), runs on MPS (Apple Silicon) or CPU.
    - **LLM (MedGemma slot)**: Ollama API. Default model `qwen3.5:9b` (MedGemma GGUF not installed locally). Override with env var `CARDIOVOICE_LLM_MODEL`. Reasoning models need `think=False` (set in the wrapper) or `content` comes back empty.
 5. **Demo** (`demo.py`) — no-hardware demo with modes: `llm`, `asr`, `full`, `info`. Uses the real `UnifiedModelManager`.
-6. **Database** — PostgreSQL schema in `schema.sql` (not yet wired into the pipeline).
+6. **UI** (`app.py`) — Streamlit MVP (local-first): record from mic or upload audio → transcribe → generate note → edit the 7 fields → save draft / verify. Loads the model once via `@st.cache_resource`; mic recording runs in a background `MicRecorder` thread.
+7. **Persistence** (`backend/store.py`) — local SQLite store at `~/.cardiovoice/cardiovoice.db`. `encounters` + `records` with draft/verified status and audit timestamps. Data never leaves the machine. (`schema.sql` is the older Postgres design, not used by the MVP.)
 
 Key data flow: mic/file audio → `audio_capture` → `vad_segmenter` → `UnifiedModelManager` (MedASR transcribe → LLM generate) → structured `OutpatientRecord`.
 
@@ -51,11 +52,14 @@ python demo.py --mode llm     # note generation from a sample transcript
 python demo.py --mode asr     # transcribe the bundled MedASR test audio
 python demo.py --mode full    # audio -> transcript -> note
 
-# Realtime pipeline
+# Realtime pipeline (CLI)
 python realtime_pipeline.py --list-devices
 python realtime_pipeline.py --mic                # live microphone
 python realtime_pipeline.py --file               # replay bundled test wav
 python realtime_pipeline.py --file path/to.wav   # replay a specific file
+
+# UI (doctor-facing MVP)
+streamlit run app.py
 ```
 
 ## Key Technical Details

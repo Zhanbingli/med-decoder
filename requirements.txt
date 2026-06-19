@@ -21,8 +21,7 @@ pydantic>=2.0.0
 httpx>=0.24.0
 
 # Streamlit UI
-streamlit>=1.28.0
-streamlit-webrtc>=0.47.0
+streamlit>=1.30.0
 
 # LLM backend
 ollama>=0.3.0

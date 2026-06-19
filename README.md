@@ -244,6 +244,17 @@ model, or pull the real MedGemma GGUF and point the env var at it.
 Make sure Ollama is running (`ollama serve`) and you are in the `medgemma`
 conda env.
 
+### UI (recommended)
+
+```bash
+streamlit run app.py
+```
+
+A local-first Streamlit app: record from the microphone (or upload audio),
+transcribe, generate a structured note, **edit the fields**, then save as a
+draft or verify. Records are stored locally in SQLite at
+`~/.cardiovoice/cardiovoice.db` — nothing leaves the machine.
+
 ### Demo (no hardware needed)
 
 ```bash
