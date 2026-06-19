@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+build/
+dist/
+
+# Tooling caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local artifacts
+test_result.json
+*.log
+*.wav
+!**/test_audio.wav
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

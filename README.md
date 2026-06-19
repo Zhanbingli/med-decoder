@@ -7,11 +7,21 @@
 *Med-Gemma Impact Challenge Submission*
 
 ![Architecture](https://img.shields.io/badge/Architecture-End--to--End-blue)
-![Models](https://img.shields.io/badge/Models-MedGemma%201.5%20%2B%20MedASR-green)
-![Hardware](https://img.shields.io/badge/Hardware-ESP32--S3-orange)
+![Models](https://img.shields.io/badge/Models-MedASR%20%2B%20Local%20LLM-green)
+![Audio](https://img.shields.io/badge/Audio-Local%20Microphone-orange)
 ![License](https://img.shields.io/badge/License-Apache%202.0-yellow)
 
 </div>
+
+---
+
+> **Update:** the audio path has moved from custom ESP32-S3 hardware to a
+> **local microphone** (any USB/built-in mic) captured directly on the machine.
+> No firmware, no TCP server. The note-generation model defaults to a local
+> Ollama model (`qwen3.5:9b`, override with `CARDIOVOICE_LLM_MODEL`) since the
+> MedGemma GGUF is not bundled. The ESP32 firmware and TCP receiver have been
+> removed; parts of this README still describe the original hardware design and
+> are kept for context. See `CLAUDE.md` for the current architecture.
 
 ---
 
@@ -55,7 +65,7 @@ Clinical documentation consumes 35% of physician time, with cardiology being par
 ### Our Solution
 
 An integrated system that:
-- 🎤 **Captures** real-time medical conversations via ESP32-S3 + INMP441
+- 🎤 **Captures** real-time medical conversations via a local microphone
 - 📝 **Transcribes** using MedASR (optimized for medical terminology)
 - 📋 **Generates** structured outpatient records with MedGemma 1.5 4B
 - ✅ **Enables** physician review through an intuitive Streamlit interface
@@ -177,32 +187,23 @@ Edit `esp32_firmware/wifi_config.h`:
 
 ```bash
 # Clone repository
-git clone https://github.com/Zhanbingli/cardivoice.git
-cd cardivoice
+git clone https://github.com/Zhanbingli/med-decoder.git
+cd med-decoder
 
-# Create conda environment
-conda create -n cardivoice python=3.11
-conda activate cardivoice
+# Create / activate conda environment (the working env is named `medgemma`)
+conda create -n medgemma python=3.11
+conda activate medgemma
 
 # Install PyTorch (Apple Silicon MPS)
 pip install torch torchvision torchaudio
 
-# Install transformers and dependencies
-pip install transformers==4.50.0
-pip install accelerate datasets
-
-# Install web framework dependencies
-pip install fastapi uvicorn websockets pydantic
-
-# Install UI dependencies
-pip install streamlit pandas numpy
-
-# Install database driver
-pip install psycopg2-binary
-
-# Install audio processing
-pip install soundfile librosa
+# Install everything else (transformers, ollama, audio capture, etc.)
+pip install -r requirements.txt
 ```
+
+Audio capture uses `sounddevice` (PortAudio) and `soxr` for 48k→16k
+resampling — both are in `requirements.txt`. On macOS you will get a
+microphone-permission prompt the first time you run the mic pipeline.
 
 ### Database Setup
 
@@ -230,61 +231,55 @@ export HF_TOKEN=your_token_here
 ```
 
 Request access at:
-- [MedGemma 1.5 4B](https://huggingface.co/google/medgemma-1.5-4b-it)
 - [MedASR](https://huggingface.co/google/medasr)
+
+The note-generation LLM runs through Ollama and defaults to `qwen3.5:9b`
+(already local). Set `CARDIOVOICE_LLM_MODEL=qwen3.5:2b` for a faster, lighter
+model, or pull the real MedGemma GGUF and point the env var at it.
 
 ---
 
 ## Usage Guide
 
-### 1. Start the Audio Receiver
+Make sure Ollama is running (`ollama serve`) and you are in the `medgemma`
+conda env.
+
+### Demo (no hardware needed)
 
 ```bash
-# Terminal 1
-python audio_receiver.py
+python demo.py --mode llm     # generate a note from a sample transcript
+python demo.py --mode asr     # transcribe the bundled MedASR test audio
+python demo.py --mode full    # audio -> transcript -> structured note
+python demo.py --mode info    # show model status
 ```
 
-Expected output:
-```
-Audio server started on 0.0.0.0:8000
-Waiting for ESP32 connection...
-```
-
-### 2. Start the Backend API
+### Realtime pipeline
 
 ```bash
-# Terminal 2
-python backend/main.py
+# List available input devices
+python realtime_pipeline.py --list-devices
+
+# Live microphone (Ctrl+C to stop and generate the note)
+python realtime_pipeline.py --mic
+python realtime_pipeline.py --mic --device 1 --seconds 60
+
+# Replay a file through the full pipeline (no microphone)
+python realtime_pipeline.py --file               # bundled MedASR test wav
+python realtime_pipeline.py --file path/to.wav
 ```
 
-Expected output:
-```
-INFO:     Uvicorn running on http://0.0.0.0:8000
-INFO:     MedASR model loaded successfully
-INFO:     MedGemma model loaded successfully
-```
+The pipeline captures audio → VAD segments it at speech pauses → MedASR
+transcribes each utterance → on stop, the LLM generates a structured
+outpatient note.
 
-### 3. Launch the UI
+### Recording Workflow
 
-```bash
-# Terminal 3
-streamlit run app.py
-```
-
-The UI will open in your browser at `http://localhost:8501`
-
-### 4. Recording Workflow
-
-1. **Connect ESP32**: Power on the device; it will automatically connect
-2. **Verify Connection**: Check the sidebar for connection status
-3. **Enter Patient Info**: Fill in patient name, age, gender
-4. **Select Template**: Choose "General" or "Cardiology" template
-5. **Start Recording**: Click "Start Recording"
-6. **Conduct Visit**: Proceed with normal patient interaction
-7. **Stop Recording**: Click "Stop Recording" when finished
-8. **Generate Report**: Click "Generate Outpatient Record"
-9. **Review & Edit**: Physician reviews and modifies as needed
-10. **Verify & Save**: Click "Verify and Submit" to finalize
+1. **Pick a microphone**: a USB omnidirectional conference mic on the desk
+   works well for capturing both doctor and patient.
+2. **Start**: run `python realtime_pipeline.py --mic`.
+3. **Conduct visit**: live transcripts print as utterances complete.
+4. **Stop**: press Ctrl+C; the full transcript and a structured note are
+   generated and printed.
 
 ---
 

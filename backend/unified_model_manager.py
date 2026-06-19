@@ -215,8 +215,11 @@ class MedASRWrapper(BaseModelWrapper):
             if self.pipe:
                 del self.pipe
                 self.pipe = None
-            
-            if torch.cuda.is_available():
+
+            # 释放加速器显存：本项目跑在 Apple Silicon (MPS) 上，原来误用了 cuda
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+            elif torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
             self._update_status(ModelStatus.UNLOADED)
@@ -298,11 +301,14 @@ class MedASRWrapper(BaseModelWrapper):
             raise RuntimeError("MedASR model not loaded")
         
         start_time = time.time()
-        
+
         try:
-            # 归一化到 [-1, 1]
-            audio_float = audio_data.astype(np.float32) / 32768.0
-            
+            # 归一化到 [-1, 1]：整型按 16-bit PCM 缩放；浮点视为已归一化，避免重复缩放
+            if np.issubdtype(audio_data.dtype, np.floating):
+                audio_float = audio_data.astype(np.float32)
+            else:
+                audio_float = audio_data.astype(np.float32) / 32768.0
+
             result = self.pipe(
                 audio_float,
                 chunk_length_s=20,
@@ -344,8 +350,8 @@ class MedGemmaWrapper(BaseModelWrapper):
     使用 Ollama API + GGUF量化模型 (Metal加速)
     """
     
-    def __init__(self, 
-                 model_name: str = "unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M",
+    def __init__(self,
+                 model_name: Optional[str] = None,
                  temperature: float = 0.3,
                  max_tokens: int = 800):
         super().__init__(
@@ -353,9 +359,13 @@ class MedGemmaWrapper(BaseModelWrapper):
             version="1.5.0",
             backend=InferenceBackend.OLLAMA
         )
+        # 默认使用本地已有的 qwen3.5:9b；可通过环境变量 CARDIOVOICE_LLM_MODEL 覆盖
+        if model_name is None:
+            model_name = os.environ.get("CARDIOVOICE_LLM_MODEL", "qwen3.5:9b")
         self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.think = False  # 关闭推理模型(qwen3.5等)的思考输出，保证 content 非空
         self.ollama_model_name = None  # Ollama 中实际的模型名称
         
         # Ollama 服务地址
@@ -486,9 +496,10 @@ class MedGemmaWrapper(BaseModelWrapper):
                     'role': 'user',
                     'content': prompt
                 }],
-                options=gen_options
+                options=gen_options,
+                think=self.think  # qwen3.5 等推理模型需关闭思考，否则 token 预算被思考耗尽，content 为空
             )
-            
+
             self.info.inference_count += 1
             return response['message']['content']
             
@@ -698,6 +709,8 @@ PLAN:
                     content = content.replace(ph, '')
                 # 移除过多的空行
                 content = re.sub(r'\n{3,}', '\n\n', content)
+                # 去掉开头残留的 markdown 标记 (** / # / :)
+                content = re.sub(r'^[\s*#:]+', '', content).strip()
                 parsed[section_name] = content
             else:
                 parsed[section_name] = ""
@@ -730,17 +743,27 @@ class UnifiedModelManager:
             Dict: 各模型的加载状态
         """
         results = {}
-        
-        # 加载 MedASR
+
+        # 并行加载：MedASR 权重加载较慢(~15s)，MedGemma 只是探测 Ollama，
+        # 两者无依赖，并行可缩短启动时间。
         if verbose:
-            logger.info("Loading MedASR (Transformers)...")
-        results['medasr'] = self.medasr.load()
-        
-        # 加载 MedGemma
-        if verbose:
-            logger.info("Loading MedGemma (Ollama)...")
-        results['medgemma'] = self.medgemma.load()
-        
+            logger.info("Loading MedASR (Transformers) + MedGemma (Ollama) in parallel...")
+
+        def _load_medasr():
+            results['medasr'] = self.medasr.load()
+
+        def _load_medgemma():
+            results['medgemma'] = self.medgemma.load()
+
+        threads = [
+            threading.Thread(target=_load_medasr),
+            threading.Thread(target=_load_medgemma),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
         # 检查整体状态
         all_ready = all(results.values())
         if verbose:

@@ -24,9 +24,14 @@ httpx>=0.24.0
 streamlit>=1.28.0
 streamlit-webrtc>=0.47.0
 
+# LLM backend
+ollama>=0.3.0
+
 # Audio Processing
 librosa>=0.10.0
 soundfile>=0.12.0
+sounddevice>=0.4.6   # local microphone capture (PortAudio)
+soxr>=0.3.7          # high-quality 48k -> 16k resampling
 scipy>=1.10.0
 numpy>=1.24.0
 
@@ -65,7 +70,3 @@ types-Pillow>=10.0.0
 # pip install --no-deps -r requirements.txt
 # conda install pytorch::pytorch torchvision torchaudio
 # pip install transformers accelerate
-
-# ESP32 MicroPython Tools (for audio recorder project)
-mpfshell>=0.8.0  # For uploading files to MicroPython ESP32
-pyserial>=3.5.0  # Serial communication support
