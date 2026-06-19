@@ -22,7 +22,7 @@ import logging
 import threading
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Any, Union, Callable
+from typing import Optional, Dict, List, Any, Union, Callable, Tuple
 from enum import Enum
 from abc import ABC, abstractmethod
 
@@ -88,6 +88,8 @@ class TranscriptionResult:
     audio_duration: float
     word_count: int
     timestamp: str
+    # 逐词置信度 (word, confidence)，来自 CTC 逐帧 softmax，用于在 UI 标注可疑片段
+    word_confidences: List[Tuple[str, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -246,44 +248,77 @@ class MedASRWrapper(BaseModelWrapper):
         """
         if not self.is_available():
             raise RuntimeError("MedASR model not loaded")
-        
-        start_time = time.time()
-        
+
+        import soundfile as sf
+
         try:
-            result = self.pipe(
-                audio_path,
-                chunk_length_s=20,
-                stride_length_s=2,
-                batch_size=1
-            )
-            
-            processing_time = time.time() - start_time
-            text = result['text']
-            
-            # 计算置信度（基于文本长度估算）
-            confidence = min(0.95, 0.7 + len(text) / 1000)
-            
-            # 估算音频时长
-            audio_duration = len(text) / 3  # 假设每3个字/秒
-            
-            transcription = TranscriptionResult(
-                text=text,
-                confidence=confidence,
-                processing_time=processing_time,
-                audio_duration=audio_duration,
-                word_count=len(text.split()),
-                timestamp=time.strftime("%Y-%m-%d %H:%M:%S")
-            )
-            
-            self.info.inference_count += 1
-            self.info.last_inference_time = processing_time
-            
-            logger.info(f"Transcription completed: {len(text)} chars in {processing_time:.2f}s")
-            return transcription
-            
+            audio, sr = sf.read(audio_path, dtype="float32", always_2d=False)
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)
+            if sr != 16000:
+                import soxr
+                audio = soxr.resample(audio, sr, 16000)
+            return self.transcribe_array(audio.astype(np.float32), sample_rate=16000)
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
             raise
+
+    # 特殊 token，不计入词
+    _SPECIAL_TOKENS = {"<epsilon>", "<s>", "</s>", "<unk>", "<pad>"}
+
+    def _decode_with_confidence(
+        self, audio_float: np.ndarray, window_s: int = 20
+    ) -> Tuple[str, List[Tuple[str, float]]]:
+        """
+        贪心 CTC 解码，返回 (文本, 逐词置信度)。
+
+        置信度 = 每词所含 token 的逐帧 softmax 最大概率均值。CTC 空白符 (id 0)
+        和特殊 token 被跳过；SentencePiece 的 '▁' 标记词边界。长音频按 window_s
+        分窗解码后拼接。
+        """
+        model = self.pipe.model
+        fe = self.pipe.feature_extractor
+        tok = self.pipe.tokenizer
+
+        win = int(16000 * window_s)
+        words: List[Tuple[str, float]] = []
+
+        for start in range(0, max(1, len(audio_float)), win):
+            chunk = audio_float[start : start + win]
+            if len(chunk) < 400:  # < 25ms，忽略
+                continue
+            inputs = fe(chunk, sampling_rate=16000, return_tensors="pt")
+            inputs = {k: v.to(model.device) for k, v in inputs.items()}
+            with torch.no_grad():
+                logits = model(**inputs).logits
+            probs = torch.softmax(logits.float(), dim=-1)[0]
+            conf, ids = probs.max(dim=-1)
+            ids = ids.cpu().numpy()
+            conf = conf.cpu().numpy()
+
+            prev = -1
+            cur, cur_conf = "", []
+            for i, c in zip(ids, conf):
+                if i == prev:
+                    continue
+                prev = i
+                if i == 0:  # blank
+                    continue
+                t = tok.convert_ids_to_tokens([int(i)])[0]
+                if t in self._SPECIAL_TOKENS:
+                    continue
+                if t.startswith("▁"):
+                    if cur:
+                        words.append((cur, float(np.mean(cur_conf))))
+                    cur, cur_conf = t[1:], [float(c)]
+                else:
+                    cur += t
+                    cur_conf.append(float(c))
+            if cur:
+                words.append((cur, float(np.mean(cur_conf))))
+
+        text = " ".join(w for w, _ in words)
+        return text, words
     
     def transcribe_array(self, audio_data: np.ndarray, 
                          sample_rate: int = 16000) -> TranscriptionResult:
@@ -309,36 +344,31 @@ class MedASRWrapper(BaseModelWrapper):
             else:
                 audio_float = audio_data.astype(np.float32) / 32768.0
 
-            result = self.pipe(
-                audio_float,
-                chunk_length_s=20,
-                stride_length_s=2,
-                batch_size=1
-            )
-            
+            text, words = self._decode_with_confidence(audio_float)
+
             processing_time = time.time() - start_time
-            text = result['text']
-            
-            # 计算置信度
-            confidence = min(0.95, 0.7 + len(text) / 1000)
-            
-            # 计算音频时长
+
+            # 真实置信度：逐词置信度均值（无词则为 0）
+            confidence = (
+                float(np.mean([c for _, c in words])) if words else 0.0
+            )
             audio_duration = len(audio_data) / sample_rate
-            
+
             transcription = TranscriptionResult(
                 text=text,
                 confidence=confidence,
                 processing_time=processing_time,
                 audio_duration=audio_duration,
-                word_count=len(text.split()),
-                timestamp=time.strftime("%Y-%m-%d %H:%M:%S")
+                word_count=len(words),
+                timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
+                word_confidences=words,
             )
-            
+
             self.info.inference_count += 1
             self.info.last_inference_time = processing_time
-            
+
             return transcription
-            
+
         except Exception as e:
             logger.error(f"Array transcription failed: {e}")
             raise

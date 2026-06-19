@@ -14,12 +14,15 @@ Run:
     streamlit run app.py
 """
 
+import html
 import logging
 import sys
 import tempfile
 from pathlib import Path
 
 import streamlit as st
+
+LOW_CONF = 0.6  # words below this are flagged for the doctor to double-check
 
 # Quiet the console (httpx logs every Ollama poll).
 for _n in ("httpx", "httpcore", "urllib3"):
@@ -130,17 +133,51 @@ def step(num: int, title: str):
 
 
 # ------------------------------------------------------------------- actions
-def _transcribe_bytes(manager, data: bytes, suffix: str) -> str:
+def _transcribe_bytes(manager, data: bytes, suffix: str):
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
         f.write(data)
         path = f.name
     result = manager.transcribe(path)
-    return clean_transcript(result.text)
+    return clean_transcript(result.text), result.word_confidences, result.confidence
+
+
+def render_confidence(words, conf):
+    """Read-only review view: overall confidence + low-confidence words flagged."""
+    if not words:
+        return
+    flagged = sum(1 for w, c in words if c < LOW_CONF and w not in _PLACEHOLDERS)
+    c1, c2 = st.columns([1, 3])
+    c1.metric("整体置信度", f"{conf * 100:.0f}%")
+    c2.caption(
+        f"⚠️ {flagged} 处低置信片段（已标黄），请重点核对"
+        if flagged else "✅ 未发现明显低置信片段"
+    )
+    parts = []
+    for w, c in words:
+        if w in _PLACEHOLDERS:
+            parts.append(_PLACEHOLDERS[w])
+            continue
+        disp = html.escape(w)
+        if c < LOW_CONF:
+            parts.append(
+                f'<span style="background:#FFE08A;border-radius:3px;padding:0 2px" '
+                f'title="置信度 {c * 100:.0f}%">{disp}</span>'
+            )
+        else:
+            parts.append(disp)
+    txt = " ".join(parts)
+    for a, b in ((" .", "."), (" ,", ","), (" :", ":"), (" }", "}"), ("{ ", "{")):
+        txt = txt.replace(a, b)
+    st.markdown(
+        f'<div style="line-height:1.9;padding:10px 12px;background:#FAFBFC;'
+        f'border:1px solid #E3E9ED;border-radius:10px">{txt}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _reset():
-    for k in ("transcript", "note_fields", "encounter_id", "record_id",
-              "model_used", "audio_sig"):
+    for k in ("transcript", "word_conf", "asr_conf", "note_fields",
+              "encounter_id", "record_id", "model_used", "audio_sig"):
         st.session_state.pop(k, None)
 
 
@@ -184,9 +221,12 @@ def audio_panel(manager):
             if st.session_state.get("audio_sig") != sig:
                 with st.spinner("MedASR 转写中…"):
                     try:
-                        st.session_state["transcript"] = _transcribe_bytes(
+                        text, words, conf = _transcribe_bytes(
                             manager, bytes(data), suffix
                         )
+                        st.session_state["transcript"] = text
+                        st.session_state["word_conf"] = words
+                        st.session_state["asr_conf"] = conf
                         st.session_state["audio_sig"] = sig
                         st.session_state.pop("note_fields", None)
                     except Exception as e:
@@ -194,10 +234,13 @@ def audio_panel(manager):
 
         transcript = st.session_state.get("transcript")
         if transcript is not None:
-            st.markdown('<span class="cv-tag">转写结果（可手动修正）</span>',
+            words = st.session_state.get("word_conf") or []
+            if words:
+                render_confidence(words, st.session_state.get("asr_conf", 0.0))
+            st.markdown('<span class="cv-tag">转写结果（可手动修正后再生成）</span>',
                         unsafe_allow_html=True)
             st.session_state["transcript"] = st.text_area(
-                "transcript", value=transcript, height=150,
+                "transcript", value=transcript, height=140,
                 label_visibility="collapsed",
             )
             if not transcript.strip():
