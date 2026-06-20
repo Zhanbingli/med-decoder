@@ -18,6 +18,7 @@ import html
 import logging
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -33,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from unified_model_manager import UnifiedModelManager, create_patient_info  # noqa: E402
 from store import RecordStore, NOTE_FIELDS  # noqa: E402
+import export  # noqa: E402
 
 NOTE_LABELS = {
     "chief_complaint": "主诉 · Chief Complaint",
@@ -323,6 +325,25 @@ def note_panel(manager, cfg, store):
             store.verify_record(st.session_state["record_id"], verifier or "physician")
             st.session_state["note_fields"] = edited
             st.toast("已核验并保存", icon="✅")
+
+        # --- 导出 ---
+        st.divider()
+        st.markdown('<span class="cv-tag">导出（放入病历系统 / 打印）</span>',
+                    unsafe_allow_html=True)
+        meta = {"template": cfg["template"]}
+        stem = f"note_{cfg['patient'].get('name') or 'patient'}_{time.strftime('%Y%m%d')}"
+        txt = export.format_text(edited, cfg["patient"], meta)
+        e1, e2, e3 = st.columns(3)
+        e1.download_button("⬇️ 文本", txt, file_name=f"{stem}.txt",
+                           mime="text/plain", use_container_width=True)
+        e2.download_button("⬇️ Markdown", export.format_markdown(edited, cfg["patient"], meta),
+                           file_name=f"{stem}.md", mime="text/markdown",
+                           use_container_width=True)
+        e3.download_button("⬇️ PDF", export.format_pdf(edited, cfg["patient"], meta),
+                           file_name=f"{stem}.pdf", mime="application/pdf",
+                           use_container_width=True)
+        with st.expander("📋 复制纯文本"):
+            st.code(txt, language=None)
 
 
 def history_panel(store):

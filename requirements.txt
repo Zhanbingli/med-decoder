@@ -23,6 +23,9 @@ httpx>=0.24.0
 # Streamlit UI
 streamlit>=1.30.0
 
+# Note export (PDF with built-in CJK font)
+reportlab>=4.0.0
+
 # LLM backend
 ollama>=0.3.0
 

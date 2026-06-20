@@ -148,6 +148,7 @@ med-decoder/
 ├── preprocess.py                   # high-pass + peak-normalize before ASR
 ├── vad_segmenter.py                # energy-based utterance segmentation
 ├── lexicons/cardiology.txt         # terms/drugs for LLM transcript correction
+├── export.py                       # note export: text / Markdown / PDF
 ├── demo.py / demo_unified.py       # no-hardware demos
 ├── eval_wer.py                     # WER measurement harness
 ├── backend/
@@ -169,7 +170,7 @@ med-decoder/
 - [x] **Confidence / uncertainty markers** so the doctor knows what to double-check
 - [x] **WER measurement harness** (`eval_wer.py`) to track accuracy
 - [x] **LLM post-ASR correction** of medical terms/drugs (conservative, lexicon-guided)
-- [ ] **Export / print** the note (PDF, plain text)
+- [x] **Export the note** — text / Markdown / PDF (CJK-capable), plus copy-to-clipboard
 - [ ] **Speaker separation** (dual-lavalier or diarization) for doctor vs patient
 - [ ] Swap in the real **MedGemma** GGUF when available
 - [ ] Multi-specialty templates beyond cardiology
