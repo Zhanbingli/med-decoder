@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as api from "./api";
 import type { Fields, Patient, Word } from "./api";
 import { WavRecorder } from "./recorder";
+import { Ecg } from "./Ecg";
 
 const LABELS: Record<string, string> = {
   chief_complaint: "主诉 · Chief Complaint",
@@ -23,12 +24,23 @@ function cleanWord(w: string): string {
   return PH[w] !== undefined ? PH[w] : w;
 }
 
-function Pill({ on, label }: { on: boolean; label: string }) {
+function Led({ on, label }: { on: boolean; label: string }) {
   return (
-    <span className="pill">
+    <span className="led">
       <span className={"dot " + (on ? "on" : "off")} />
       {label}
     </span>
+  );
+}
+
+function Step({ n, label, sub }: { n: string; label: string; sub: string }) {
+  return (
+    <div className="step">
+      <span className="lead">{n}</span>
+      <span className="label">
+        {label} <small>· {sub}</small>
+      </span>
+    </div>
   );
 }
 
@@ -39,8 +51,8 @@ function ConfidenceView({ words }: { words: Word[] }) {
     <div className="conf-box">
       <div className="conf-head">
         {flagged > 0
-          ? `⚠️ ${flagged} 处低置信片段（标黄），请重点核对`
-          : "✅ 未发现明显低置信片段"}
+          ? `${flagged} 处低置信片段（虚线标注）— 请重点核对`
+          : "全部高置信 — 无需特别核对"}
       </div>
       <div className="conf-text">
         {words.map(([w, c], i) => {
@@ -164,46 +176,49 @@ export default function App() {
   }
 
   const emptyCount = fields ? FIELD_ORDER.filter((k) => !(fields[k] || "").trim()).length : 0;
+  const trace: "idle" | "recording" | "busy" =
+    recording ? "recording" : busy || genLive ? "busy" : "idle";
 
   return (
     <div className="app">
-      <header className="hero">
-        <div>
-          <h1>🫀 CardioVoice</h1>
-          <p>心内科门诊语音病历 · 本地运行，数据不出本机</p>
+      <header className="bar">
+        <div className="brand">
+          <span className="mark">Cardio<b>Voice</b></span>
+          <span className="sub">ambient cardiology notes · local</span>
         </div>
-        <div className="pills">
-          <Pill on={!!status?.asr} label="MedASR 转写" />
-          <Pill on={!!status?.llm} label={`LLM · ${status?.model ?? "?"}`} />
+        <Ecg state={trace} />
+        <div className="leds">
+          <Led on={!!status?.asr} label="MedASR" />
+          <Led on={!!status?.llm} label={status?.model ?? "LLM"} />
         </div>
       </header>
 
       <nav className="tabs">
         <button className={tab === "new" ? "active" : ""} onClick={() => setTab("new")}>
-          📝 新建门诊记录
+          新建记录
         </button>
         <button className={tab === "history" ? "active" : ""}
           onClick={() => { setTab("history"); api.listEncounters().then(setHistory); }}>
-          📚 历史
+          历史
         </button>
-        <button className="ghost" onClick={reset}>🔄 新建</button>
+        <button className="ghost" onClick={reset}>清空重来</button>
       </nav>
 
       {tab === "new" && (
         <main>
           <section className="card">
-            <div className="step"><span className="num">1</span>患者信息</div>
+            <Step n="01" label="患者信息" sub="Patient" />
             <div className="row">
-              <label className="grow">姓名
+              <label className="grow"><span className="flabel">姓名 Name</span>
                 <input value={patient.name}
                   onChange={(e) => setPatient({ ...patient, name: e.target.value })}
                   placeholder="可留空" />
               </label>
-              <label>年龄
+              <label><span className="flabel">年龄 Age</span>
                 <input type="number" value={patient.age}
                   onChange={(e) => setPatient({ ...patient, age: +e.target.value })} />
               </label>
-              <label>性别
+              <label><span className="flabel">性别 Sex</span>
                 <select value={patient.gender}
                   onChange={(e) => setPatient({ ...patient, gender: e.target.value })}>
                   <option value="male">male</option>
@@ -211,7 +226,7 @@ export default function App() {
                   <option value="unknown">unknown</option>
                 </select>
               </label>
-              <label>模板
+              <label><span className="flabel">模板 Template</span>
                 <select value={template} onChange={(e) => setTemplate(e.target.value)}>
                   <option value="cardiology">cardiology</option>
                   <option value="general">general</option>
@@ -221,22 +236,26 @@ export default function App() {
           </section>
 
           <section className="card">
-            <div className="step"><span className="num">2</span>采集 / 转写</div>
+            <Step n="02" label="采集与转写" sub="Capture" />
             <div className="row">
-              <button className={"primary " + (recording ? "rec" : "")} onClick={toggleRecord}>
-                {recording ? "■ 停止并转写" : "● 开始录音"}
+              <button className={"rec " + (recording ? "on" : "")} onClick={toggleRecord}>
+                {recording ? "停止并转写" : "开始录音"}
               </button>
               <label className="upload">
-                📁 上传音频
+                上传音频
                 <input type="file" accept="audio/*" hidden
                   onChange={(e) => e.target.files?.[0] && onAudio(e.target.files[0], e.target.files[0].name)} />
               </label>
               {busy && <span className="busy">{busy}</span>}
-              {recording && <span className="busy rec">🔴 录音中…</span>}
+              {recording && <span className="busy rec">录音中</span>}
             </div>
 
             {words.length > 0 && (
-              <div className="metric">整体置信度 <b>{Math.round(conf * 100)}%</b></div>
+              <div className="metric">
+                <span className="n">{Math.round(conf * 100)}%</span>
+                <span className="cap">整体置信度</span>
+                <span className="gauge"><i style={{ width: `${Math.round(conf * 100)}%` }} /></span>
+              </div>
             )}
             <ConfidenceView words={words} />
 
@@ -253,9 +272,9 @@ export default function App() {
 
           {transcript.trim() && (
             <section className="card">
-              <div className="step"><span className="num">3</span>生成结构化病历</div>
+              <Step n="03" label="生成结构化病历" sub="Note" />
               <button className="primary" disabled={!status?.llm || genLive} onClick={runGenerate}>
-                {genLive ? "生成中…（实时）" : "🧠 生成病历"}
+                {genLive ? "生成中…（实时）" : "生成病历"}
               </button>
               {!status?.llm && <p className="hint">LLM 未就绪：请运行 <code>ollama serve</code></p>}
               {genLive && <pre className="stream">{streamRaw || "…"}</pre>}
@@ -264,17 +283,17 @@ export default function App() {
 
           {fields && (
             <section className="card">
-              <div className="step"><span className="num">4</span>审阅与编辑</div>
+              <Step n="04" label="审阅与编辑" sub="Review" />
               <div className="tag">
-                仅依据转写内容，<b>未提及的查体/检查留空（不编造）</b> · 医生核验后保存
+                仅依据转写内容 · 未提及的查体/检查留空（不编造）· 医生核验后保存
               </div>
               {emptyCount > 0 && (
                 <p className="hint">ℹ️ {emptyCount} 个字段为空 = 转写中未提及，请补充（留空是有意为之）</p>
               )}
               {FIELD_ORDER.map((k) => (
-                <label key={k} className="field">{LABELS[k]}
+                <label key={k} className="field"><span className="flabel">{LABELS[k]}</span>
                   <textarea value={fields[k] || ""} rows={3}
-                    placeholder={!(fields[k] || "").trim() ? "（转写中未提及，请补充）" : ""}
+                    placeholder={!(fields[k] || "").trim() ? "转写中未提及 — 待补充" : ""}
                     onChange={(e) => setFields({ ...fields, [k]: e.target.value })} />
                 </label>
               ))}
@@ -297,7 +316,7 @@ export default function App() {
       {tab === "history" && (
         <main>
           <section className="card">
-            <div className="step"><span className="num">📚</span>历史记录</div>
+            <Step n="HX" label="历史记录" sub="History" />
             {history.length === 0 && <p className="hint">暂无记录</p>}
             {history.map((e) => (
               <details key={e.id} className="hist">
