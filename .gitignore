@@ -23,6 +23,11 @@ test_result.json
 *.wav
 !**/test_audio.wav
 
+# Node / frontend
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+
 # OS / editor
 .DS_Store
 .idea/

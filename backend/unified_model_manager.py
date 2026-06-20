@@ -621,6 +621,36 @@ Corrected transcript:"""
             return text
         return corrected
 
+    def stream_structured_note(self, transcription: str,
+                               patient_info: PatientInfo,
+                               template: str = "cardiology"):
+        """
+        流式生成结构化病历。逐个产出 ('token', text)，最后产出
+        ('done', {'fields': dict, 'raw': str})。用于前端边生成边显示，消除干等。
+        """
+        prompt = self._create_structured_prompt(transcription, patient_info, template)
+        gen_options = {'temperature': 0.2, 'num_predict': self.max_tokens}
+        raw = ""
+        try:
+            stream = ollama.chat(
+                model=self.ollama_model_name,
+                messages=[{'role': 'user', 'content': prompt}],
+                options=gen_options, think=self.think, format="json", stream=True,
+            )
+            for part in stream:
+                tok = part['message']['content']
+                if tok:
+                    raw += tok
+                    yield ('token', tok)
+        except Exception as e:
+            logger.error(f"Stream note failed: {e}")
+        try:
+            fields = NoteSchema(**json.loads(raw)).model_dump()
+        except Exception:
+            fields = self._parse_response(raw)
+        self.info.inference_count += 1
+        yield ('done', {'fields': fields, 'raw': raw})
+
     def generate_cardiology_record(self,
                                    transcription: str,
                                    patient_info: PatientInfo,

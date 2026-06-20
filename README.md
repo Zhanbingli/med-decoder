@@ -93,18 +93,36 @@ On first microphone use, macOS will prompt for mic permission.
 
 ## Run
 
-```bash
-# 1) Start Ollama (separate terminal)
-ollama serve
+### Web app (product UI — recommended)
 
-# 2) Launch the app
+A React/Vite SPA on a FastAPI backend: record/upload → transcribe with
+confidence highlighting → **stream** the grounded note as it generates → edit →
+save/verify → export. No page reruns, native-feeling.
+
+```bash
+ollama serve                 # separate terminal
 conda activate medgemma
+./run_web.sh                 # starts API (:8000) + web UI (:5173)
+# open http://localhost:5173
+```
+
+Or run the halves manually:
+
+```bash
+uvicorn server.main:app --port 8000        # backend
+cd web && npm install && npm run dev        # frontend → http://localhost:5173
+```
+
+### Streamlit MVP (legacy)
+
+```bash
 streamlit run app.py
 ```
 
-Then in the browser: fill patient info → **record** (or upload audio) → the
-transcript appears → **generate note** → edit the fields → **verify & save**.
-Records land in the **History** tab and in `~/.cardiovoice/cardiovoice.db`.
+The original single-file prototype — superseded by the web app, kept for quick
+local checks. In either UI: fill patient info → **record** (or upload audio) →
+transcript appears → **generate note** → edit → **verify & save** → export.
+Records land in the History view and in `~/.cardiovoice/cardiovoice.db`.
 
 ### Faster / lighter model
 
@@ -142,7 +160,10 @@ is tracked with numbers, not guessed.
 
 ```
 med-decoder/
-├── app.py                          # Streamlit UI (the product surface)
+├── server/main.py                  # FastAPI backend (REST + SSE streaming)
+├── web/                            # React/Vite frontend (product UI)
+├── run_web.sh                      # launch backend + frontend
+├── app.py                          # Streamlit MVP (legacy prototype)
 ├── realtime_pipeline.py            # CLI: mic/file → VAD → MedASR → LLM
 ├── audio_capture.py                # MicSource + FileSource (16 kHz mono)
 ├── preprocess.py                   # high-pass + peak-normalize before ASR
