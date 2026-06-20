@@ -9,6 +9,10 @@
 ![Privacy](https://img.shields.io/badge/Data-100%25%20Local-2E7D32)
 ![License](https://img.shields.io/badge/License-Apache%202.0-yellow)
 
+<br/>
+
+![CardioVoice web UI](docs/screenshot.png)
+
 </div>
 
 ---
@@ -20,8 +24,9 @@ Everything — audio, transcript, notes — stays on the machine. No cloud.
 
 > **Status: working MVP.** The pipeline (mic → transcript → note → review → save)
 > runs end to end. The note model defaults to `qwen3.5:9b` because the MedGemma
-> GGUF isn't bundled (swap it via `CARDIOVOICE_LLM_MODEL`). Section parsing is
-> regex-based and storage is local SQLite. See [Roadmap](#roadmap) for what's next.
+> GGUF isn't bundled (swap it via `CARDIOVOICE_LLM_MODEL`). Notes are generated
+> as validated JSON (grounded so the model leaves undocumented findings empty)
+> and stored in local SQLite. See [Roadmap](#roadmap) for what's next.
 
 ---
 
