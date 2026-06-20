@@ -295,13 +295,19 @@ def note_panel(manager, cfg, store):
 
     with st.container(border=True):
         step(4, "审阅与编辑")
+        empty_n = sum(1 for k in NOTE_FIELDS if not fields.get(k, "").strip())
         st.markdown(
             f'<span class="cv-tag">模型 {st.session_state.get("model_used","")} '
-            "生成 · 医生核验后保存</span>", unsafe_allow_html=True)
+            "生成 · 仅依据转写内容，<b>未提及的查体/检查留空</b>（不编造）· "
+            "医生核验后保存</span>", unsafe_allow_html=True)
+        if empty_n:
+            st.caption(f"ℹ️ {empty_n} 个字段为空 = 转写中未提及，请医生补充（留空是有意为之，非遗漏）")
         edited = {}
         for key in NOTE_FIELDS:
+            val = fields.get(key, "")
             edited[key] = st.text_area(
-                NOTE_LABELS[key], value=fields.get(key, ""), height=84, key=f"f_{key}"
+                NOTE_LABELS[key], value=val, height=84, key=f"f_{key}",
+                placeholder="（转写中未提及，请医生补充）" if not val.strip() else "",
             )
         st.divider()
         c1, c2, c3 = st.columns([1.4, 1.4, 2])

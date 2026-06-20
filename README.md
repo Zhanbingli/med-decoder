@@ -163,7 +163,9 @@ med-decoder/
 
 ## Roadmap
 
-- [ ] **Structured output via JSON schema** instead of regex section parsing
+- [x] **Structured output via JSON** (Ollama JSON mode + Pydantic) instead of regex
+- [x] **Hallucination control** — note generation is grounded: exam/ECG/meds not in
+  the transcript are left empty, never invented
 - [x] **Confidence / uncertainty markers** so the doctor knows what to double-check
 - [x] **WER measurement harness** (`eval_wer.py`) to track accuracy
 - [x] **LLM post-ASR correction** of medical terms/drugs (conservative, lexicon-guided)

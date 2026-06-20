@@ -29,6 +29,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import torch
 from transformers import pipeline
+from pydantic import BaseModel
 import ollama
 
 # 配置日志
@@ -124,6 +125,17 @@ class OutpatientRecord:
     
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+
+class NoteSchema(BaseModel):
+    """门诊病历的 JSON 结构，用于约束并校验 LLM 输出。缺失字段默认为空字符串。"""
+    chief_complaint: str = ""
+    present_history: str = ""
+    past_history: str = ""
+    cardiovascular_exam: str = ""
+    ecg_findings: str = ""
+    assessment: str = ""
+    plan: str = ""
 
 
 class BaseModelWrapper(ABC):
@@ -502,21 +514,23 @@ class MedGemmaWrapper(BaseModelWrapper):
         except Exception:
             return False
     
-    def generate(self, prompt: str, 
-                 options: Optional[Dict] = None) -> str:
+    def generate(self, prompt: str,
+                 options: Optional[Dict] = None,
+                 fmt: Optional[Any] = None) -> str:
         """
         生成文本
-        
+
         Args:
             prompt: 提示词
             options: 生成选项 (可选)
-            
+            fmt: Ollama 输出格式，传 "json" 启用 JSON 模式 (可选)
+
         Returns:
             str: 生成的文本
         """
         if not self.is_available():
             raise RuntimeError("MedGemma model not loaded")
-        
+
         # 合并选项
         gen_options = {
             'temperature': self.temperature,
@@ -524,17 +538,18 @@ class MedGemmaWrapper(BaseModelWrapper):
         }
         if options:
             gen_options.update(options)
-        
+
+        chat_kwargs: Dict[str, Any] = dict(
+            model=self.ollama_model_name,  # 使用完整的 Ollama 模型名称
+            messages=[{'role': 'user', 'content': prompt}],
+            options=gen_options,
+            think=self.think,  # qwen3.5 等推理模型需关闭思考，否则 token 预算被思考耗尽
+        )
+        if fmt is not None:
+            chat_kwargs['format'] = fmt
+
         try:
-            response = ollama.chat(
-                model=self.ollama_model_name,  # 使用完整的 Ollama 模型名称
-                messages=[{
-                    'role': 'user',
-                    'content': prompt
-                }],
-                options=gen_options,
-                think=self.think  # qwen3.5 等推理模型需关闭思考，否则 token 预算被思考耗尽，content 为空
-            )
+            response = ollama.chat(**chat_kwargs)
 
             self.info.inference_count += 1
             return response['message']['content']
@@ -610,70 +625,103 @@ Corrected transcript:"""
                                    transcription: str,
                                    patient_info: PatientInfo,
                                    template: str = "cardiology") -> OutpatientRecord:
-        """
-        生成心内科门诊记录
-        
-        Args:
-            transcription: 语音转写文本
-            patient_info: 患者信息
-            template: 使用的模板
-            
-        Returns:
-            OutpatientRecord: 生成的门诊记录
-        """
-        start_time = time.time()
-        
-        prompt = self._create_cardiology_prompt(transcription, patient_info)
-        raw_response = self.generate(prompt)
-        
-        processing_time = time.time() - start_time
-        self.info.last_inference_time = processing_time
-        
-        # 解析响应
-        parsed = self._parse_response(raw_response)
-        
-        record = OutpatientRecord(
-            chief_complaint=parsed.get('chief_complaint', ''),
-            present_history=parsed.get('present_history', ''),
-            past_history=parsed.get('past_history', ''),
-            cardiovascular_exam=parsed.get('cardiovascular_exam', ''),
-            ecg_findings=parsed.get('ecg_findings', ''),
-            assessment=parsed.get('assessment', ''),
-            plan=parsed.get('plan', ''),
-            raw_response=raw_response,
-            processing_time=processing_time,
-            model_confidence=0.85,  # Ollama 不直接返回置信度
-            template_used=template
-        )
-        
-        logger.info(f"Cardiology record generated in {processing_time:.2f}s")
-        return record
-    
+        """生成心内科门诊记录（接地约束的 JSON 结构化输出）"""
+        return self.generate_structured_note(transcription, patient_info, "cardiology")
+
     def generate_general_record(self,
                                 transcription: str,
                                 patient_info: PatientInfo) -> OutpatientRecord:
-        """生成通用门诊记录"""
+        """生成通用门诊记录（接地约束的 JSON 结构化输出）"""
+        return self.generate_structured_note(transcription, patient_info, "general")
+
+    def generate_structured_note(self,
+                                 transcription: str,
+                                 patient_info: PatientInfo,
+                                 template: str = "cardiology") -> OutpatientRecord:
+        """
+        生成结构化门诊病历：Ollama JSON 模式 + Pydantic 校验 + 接地约束。
+
+        关键安全特性：提示词强制"只用转写中的信息，未提及的查体/ECG/用药一律留空，
+        严禁编造"，从根本上抑制 LLM 凭空生成体征/检查结果（幻觉）。JSON 解析或校验
+        失败时重试一次，再失败回退到旧的正则解析，保证永不崩溃。
+        """
         start_time = time.time()
-        
-        prompt = self._create_general_prompt(transcription, patient_info)
-        raw_response = self.generate(prompt)
-        
+        prompt = self._create_structured_prompt(transcription, patient_info, template)
+
+        raw_response = ""
+        fields: Optional[Dict[str, str]] = None
+        for attempt in range(2):
+            try:
+                raw_response = self.generate(
+                    prompt, options={'temperature': 0.2}, fmt="json"
+                )
+                fields = NoteSchema(**json.loads(raw_response)).model_dump()
+                break
+            except Exception as e:
+                logger.warning(f"Structured note parse failed (attempt {attempt + 1}): {e}")
+                prompt += ("\n\nYour previous reply was not valid JSON. "
+                           "Return ONLY a valid JSON object with the required keys.")
+
+        if fields is None:
+            logger.warning("Falling back to regex parse for note")
+            fields = self._parse_response(raw_response)
+
         processing_time = time.time() - start_time
-        parsed = self._parse_response(raw_response)
-        
+        self.info.last_inference_time = processing_time
+        logger.info(f"Structured note generated in {processing_time:.2f}s")
+
         return OutpatientRecord(
-            chief_complaint=parsed.get('chief_complaint', ''),
-            present_history=parsed.get('present_history', ''),
-            past_history=parsed.get('past_history', ''),
-            cardiovascular_exam=parsed.get('cardiovascular_exam', ''),
-            ecg_findings=parsed.get('ecg_findings', ''),
-            assessment=parsed.get('assessment', ''),
-            plan=parsed.get('plan', ''),
+            chief_complaint=fields.get('chief_complaint', ''),
+            present_history=fields.get('present_history', ''),
+            past_history=fields.get('past_history', ''),
+            cardiovascular_exam=fields.get('cardiovascular_exam', ''),
+            ecg_findings=fields.get('ecg_findings', ''),
+            assessment=fields.get('assessment', ''),
+            plan=fields.get('plan', ''),
             raw_response=raw_response,
             processing_time=processing_time,
             model_confidence=0.85,
-            template_used="general"
+            template_used=template,
         )
+
+    def _create_structured_prompt(self, transcription: str,
+                                  patient_info: PatientInfo,
+                                  template: str) -> str:
+        """创建接地约束的 JSON 病历提示词"""
+        role = ("a board-certified cardiologist" if template == "cardiology"
+                else "an experienced physician")
+
+        clean = transcription
+        for ph in ['{period}', '{comma}', '{colon}', '{new paragraph}',
+                   '{open_bracket}', '{close_bracket}', '</s>']:
+            clean = clean.replace(ph, ' ' if ph != '{period}' else '. ')
+        clean = ' '.join(clean.split())
+
+        return f"""You are {role} writing an outpatient note from a visit transcript.
+
+Return ONLY a JSON object with exactly these string keys:
+"chief_complaint", "present_history", "past_history", "cardiovascular_exam",
+"ecg_findings", "assessment", "plan"
+
+CRITICAL GROUNDING RULES (patient safety):
+- FACTUAL fields — "cardiovascular_exam", "ecg_findings", "past_history" — plus any
+  vital signs or medications: record ONLY what is explicitly stated in the
+  transcript. If something was not mentioned, set that field to "" (empty string).
+  NEVER invent, assume, or fill in normal/expected findings or results.
+- "chief_complaint" and "present_history": summarize ONLY the symptoms the patient
+  actually describes; do not add symptoms.
+- "assessment" and "plan" ARE expected and SHOULD be filled: give your working
+  diagnosis with differentials, and recommended tests / treatment / follow-up,
+  based on the documented symptoms. Frame them as recommendations, not as actions
+  already done. (These are clinical judgment, not fabricated findings.)
+- Do not restate the patient's age/sex as a clinical finding.
+
+PATIENT (context only): {patient_info.age}y {patient_info.gender}.
+
+TRANSCRIPT:
+{clean}
+
+JSON note:"""
     
     def _create_cardiology_prompt(self, transcription: str, 
                                   patient_info: PatientInfo) -> str:
